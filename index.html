@@ -898,6 +898,8 @@
     <div id="financeLedgerView" style="display:none;"></div>
     <div id="financeMemoView" style="display:none;"></div>
   </div>
+
+  <div id="buildStamp" style="text-align:center;font-size:10.5px;color:var(--ink-faint);font-weight:600;padding:14px 0 4px;">버전 2026.09.10-c</div>
 </main>
 </div>
 </div>
@@ -3637,12 +3639,16 @@
     // 장부는 2026년 달만 있으므로 25.11/25.12 는 제외하고 계산
     const ms = quarterMonths(qKey).filter(m=> LEDGER_MONTHS.includes(m));
     let inSum = 0, outSum = 0;
+    const catAgg = {};
     ms.forEach(mo=>{
       (state.finance.ledger[mo]||[]).forEach(e=>{
-        if(e.type==="in") inSum += e.amt; else outSum += e.amt;
+        const c = LEDGER_CATS.includes(e.cat) ? e.cat : guessLedgerCat(e.desc);
+        if(!catAgg[c]) catAgg[c] = { in:0, out:0 };
+        if(e.type==="in"){ inSum += e.amt; catAgg[c].in += e.amt; }
+        else { outSum += e.amt; catAgg[c].out += e.amt; }
       });
     });
-    return { months: ms, inSum, outSum, net: inSum - outSum };
+    return { months: ms, inSum, outSum, net: inSum - outSum, catAgg };
   }
 
   function monthBalances(){
@@ -3728,6 +3734,15 @@
     L.push(`수입 총액  ${won(sum.inSum)}`);
     L.push(`지출 총액  ${won(sum.outSum)}`);
     L.push(`순 증감    ${sum.net>=0?"+":""}${won(sum.net)}`);
+    L.push("");
+    L.push(`━━ 항목별 ━━`);
+    LEDGER_CATS.filter(c=>sum.catAgg[c]).forEach(c=>{
+      const a = sum.catAgg[c];
+      const parts = [];
+      if(a.in)  parts.push(`수입 ${won(a.in)}`);
+      if(a.out) parts.push(`지출 ${won(a.out)}`);
+      L.push(`${c}  ${parts.join(" / ")}`);
+    });
     return L.join("\n");
   }
 
@@ -4051,8 +4066,19 @@
       </div>
       <div class="toolbar" style="margin:0 0 12px;">
         <button class="btn secondary" id="ledReportBtn">📋 장부 보고</button>
+        <button class="btn secondary" id="ledCsvBtn">📥 엑셀(CSV)</button>
       </div>
-      <div class="section-sub" style="margin:0 0 10px;">1월 시작 잔액부터 매달 이어서 계산됩니다.</div>
+      ${(function(){
+        const rows = LEDGER_CATS.filter(c=>qs.catAgg[c]).map(c=>{
+          const a = qs.catAgg[c];
+          const parts = [];
+          if(a.in)  parts.push(`<span class="p">+${won(a.in)}</span>`);
+          if(a.out) parts.push(`<span class="n">−${won(a.out)}</span>`);
+          return `<div class="ledcat-row"><span>${esc(c)}</span><span class="amt-pair">${parts.join("")}</span></div>`;
+        }).join("");
+        return rows ? `<div class="field-label" style="margin:0 2px 6px;">항목별</div><div class="ledcat-list">${rows}</div>` : "";
+      })()}
+      <div class="section-sub" style="margin:0 0 10px;">1월 시작 잔액부터 매달 이어서 계산됩니다. 내역을 누르면 수정할 수 있어요.</div>
       <div class="form-card" style="display:flex;align-items:center;gap:10px;">
         <span class="field-label" style="margin:0;">시작 잔액 (1/1)</span>
         <input class="sib-input" id="ledStart" style="flex:1;" value="${esc((Number(f.startBalance)||0).toLocaleString("ko-KR"))}">
@@ -4069,7 +4095,7 @@
       let inSum = 0, outSum = 0;
       const rows = entries.map(e=>{
         if(e.type==="in") inSum += e.amt; else outSum += e.amt;
-        return `<div class="led-row">
+        return `<div class="led-row" data-edit-entry="${mo}|${e.id}">
           <span class="led-day">${e.day?esc(e.day)+"일":""}</span>
           <span class="led-desc">${esc(e.desc)}${e.note?`<span class="led-note">${esc(e.note)}</span>`:""}</span>
           <span class="led-amt ${e.type==="in"?"in":"out"}">${e.type==="in"?"+":"−"}${won(e.amt)}</span>
@@ -4101,6 +4127,7 @@
     document.getElementById("ledReportBtn").addEventListener("click", ()=>{
       openReportSheet(`${ledgerQuarter==="all"?"2026년 전체":FIN_QUARTERS[ledgerQuarter].label} 장부 보고`, buildLedgerReport(ledgerQuarter));
     });
+    document.getElementById("ledCsvBtn").addEventListener("click", exportLedgerCsv);
     document.getElementById("ledStart").addEventListener("change", (e)=>{
       state.finance.startBalance = numOnly(e.target.value);
       saveState();
@@ -4109,8 +4136,17 @@
     wrap.querySelectorAll("[data-add-entry]").forEach(b=>{
       b.addEventListener("click", ()=> openLedgerEntrySheet(b.dataset.addEntry));
     });
+    wrap.querySelectorAll("[data-edit-entry]").forEach(row=>{
+      row.addEventListener("click", (ev)=>{
+        if(ev.target.closest("[data-del-entry]")) return;
+        const [mo,eid] = row.dataset.editEntry.split("|");
+        const entry = (state.finance.ledger[mo]||[]).find(x=>x.id===eid);
+        if(entry) openLedgerEntrySheet(mo, entry);
+      });
+    });
     wrap.querySelectorAll("[data-del-entry]").forEach(b=>{
-      b.addEventListener("click", async ()=>{
+      b.addEventListener("click", async (ev)=>{
+        ev.stopPropagation();
         const [mo,eid] = b.dataset.delEntry.split("|");
         if(!(await customConfirm("이 내역을 삭제할까요?"))) return;
         state.finance.ledger[mo] = (state.finance.ledger[mo]||[]).filter(x=>x.id!==eid);
@@ -4120,36 +4156,171 @@
     });
   }
 
-  function openLedgerEntrySheet(mo){
+  // 장부 전체를 엑셀에서 바로 열리는 CSV로 만듭니다. (UTF-8 BOM → 한글 안 깨짐)
+  function buildLedgerCsv(){
+    const f = state.finance;
+    const q = (v)=>{ const t = String(v==null?"":v); return /[",\n]/.test(t) ? `"${t.replace(/"/g,'""')}"` : t; };
+    const lines = [];
+    lines.push(["대학로 청년부 장부"].map(q).join(","));
+    lines.push(["시작 잔액","","","","","",Number(f.startBalance)||0].map(q).join(","));
+    lines.push("");
+    lines.push(["월","일","구분","분류","내역","비고","수입","지출","잔액"].map(q).join(","));
+    let bal = Number(f.startBalance) || 0;
+    let totIn = 0, totOut = 0;
+    LEDGER_MONTHS.forEach(mo=>{
+      const entries = f.ledger[mo] || [];
+      if(!entries.length) return;
+      const mNum = Number(mo.split("-")[1]);
+      let mIn = 0, mOut = 0;
+      entries.forEach(e=>{
+        if(e.type==="in"){ bal += e.amt; mIn += e.amt; totIn += e.amt; }
+        else { bal -= e.amt; mOut += e.amt; totOut += e.amt; }
+        lines.push([
+          mNum, e.day||"", e.type==="in"?"수입":"지출",
+          (LEDGER_CATS.includes(e.cat) ? e.cat : guessLedgerCat(e.desc)),
+          e.desc||"", e.note||"",
+          e.type==="in"? e.amt : "", e.type==="out"? e.amt : "", bal
+        ].map(q).join(","));
+      });
+      lines.push([`${mNum}월 소계`,"","","","","",mIn,mOut,bal].map(q).join(","));
+    });
+    lines.push("");
+    lines.push(["총계","","","","","",totIn,totOut,bal].map(q).join(","));
+    return lines.join("\r\n");
+  }
+  async function exportLedgerCsv(){
+    const csv = buildLedgerCsv();
+    const filename = "대학로청년부_장부.csv";
+    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" });
+    try{
+      const downloads = await claude.use("downloads");
+      if(downloads){ await downloads.save({ filename, data: blob }); return; }
+    }catch(e){ /* fall back */ }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  // 여러 줄 입력 한 줄 → "일자 구분 내역 금액 | 비고"
+  function parseBulkLedgerLine(line){
+    let note = "";
+    const pipeIdx = line.indexOf("|");
+    let main = line;
+    if(pipeIdx !== -1){ main = line.slice(0, pipeIdx).trim(); note = line.slice(pipeIdx+1).trim(); }
+    let tokens = main.split(/\s+/).filter(Boolean);
+    if(!tokens.length) return { error: "내용이 없어요" };
+    let day = "";
+    if(/^\d{1,2}(일)?$/.test(tokens[0])){ day = tokens[0].replace("일",""); tokens = tokens.slice(1); }
+    let type = null;
+    const ti = tokens.findIndex(t=> /^(수입|입금|입|\+|in)$/i.test(t) || /^(지출|출금|출|-|out)$/i.test(t));
+    if(ti !== -1){ type = /^(수입|입금|입|\+|in)$/i.test(tokens[ti]) ? "in" : "out"; tokens.splice(ti,1); }
+    let amt = null;
+    for(let i = tokens.length-1; i>=0; i--){
+      if(/^-?[\d,]+원?$/.test(tokens[i])){
+        let n = tokens[i].replace(/[,원]/g,"");
+        if(n.startsWith("-")){ if(!type) type = "out"; n = n.slice(1); }
+        amt = Number(n); tokens.splice(i,1); break;
+      }
+    }
+    if(amt == null || !amt) return { error: "금액을 찾지 못했어요" };
+    if(!type) return { error: "수입/지출 구분(또는 +/-)이 없어요" };
+    const desc = tokens.join(" ").trim();
+    if(!desc) return { error: "내역 설명이 없어요" };
+    return { day, type, desc, amt, note, cat: guessLedgerCat(desc) };
+  }
+
+  function openLedgerEntrySheet(mo, editEntry){
     modalOpen = true;
+    const isEdit = !!editEntry;
     const mLabel = Number(mo.split("-")[1]) + "월";
     const body = document.getElementById("sheetBody");
     body.innerHTML = `
-      <h3>${mLabel} 내역 추가</h3>
-      <div class="field-label">일자</div>
-      <input class="sib-input" id="leDay" inputmode="numeric" placeholder="예: 15">
-      <div class="field-label" style="margin-top:10px;">구분</div>
-      <div class="seg" id="leType">
-        <button data-v="in" class="sel-primary">수입</button>
-        <button data-v="out">지출</button>
+      <h3>${mLabel} 내역 ${isEdit ? "수정" : "추가"}</h3>
+      ${isEdit ? "" : `<div class="seg" id="leMode" style="margin-bottom:14px;">
+        <button data-v="single" class="sel-primary">한 줄씩</button>
+        <button data-v="bulk">여러 줄 한번에</button>
+      </div>`}
+      <div id="leSingleForm">
+        ${isEdit ? "" : `<div class="field-label">자주 쓰는 항목</div>
+        <div class="chip-row" id="lePresets" style="margin-bottom:14px;">
+          ${LEDGER_PRESETS.map((p,i)=>`<button class="chip" data-preset="${i}">${esc(p.label)}</button>`).join("")}
+        </div>`}
+        <div class="field-label">일자</div>
+        <input class="sib-input" id="leDay" inputmode="numeric" placeholder="예: 15" value="${isEdit ? esc(editEntry.day||"") : ""}">
+        <div class="field-label" style="margin-top:10px;">구분</div>
+        <div class="seg" id="leType">
+          <button data-v="in" class="${isEdit && editEntry.type==="out" ? "" : "sel-primary"}">수입</button>
+          <button data-v="out" class="${isEdit && editEntry.type==="out" ? "sel-primary" : ""}">지출</button>
+        </div>
+        <div class="field-label">내역</div>
+        <input class="sib-input" id="leDesc" placeholder="예: 3분기 회비" value="${isEdit ? esc(editEntry.desc||"") : ""}">
+        <div class="field-label" style="margin-top:10px;">분류</div>
+        <div class="chip-row" id="leCats" style="margin-bottom:6px;">
+          ${LEDGER_CATS.map(c=>`<button class="chip" data-cat="${esc(c)}">${esc(c)}</button>`).join("")}
+        </div>
+        <div class="field-label" style="margin-top:10px;">금액</div>
+        <input class="sib-input" id="leAmt" inputmode="numeric" placeholder="예: 40000" value="${isEdit ? esc((Number(editEntry.amt)||0).toLocaleString("ko-KR")) : ""}">
+        <div class="field-label" style="margin-top:10px;">비고 (선택)</div>
+        <input class="sib-input" id="leNote" placeholder="예: 3명 입금" value="${isEdit ? esc(editEntry.note||"") : ""}">
+        <div class="toolbar">
+          <button class="btn block" id="leSave">${isEdit ? "저장" : "추가"}</button>
+          ${isEdit ? `<button class="btn ghost block" id="leDelete">이 내역 삭제</button>` : ""}
+          <button class="btn secondary block" id="leCancel">취소</button>
+        </div>
       </div>
-      <div class="field-label">내역</div>
-      <input class="sib-input" id="leDesc" placeholder="예: 3분기 회비">
-      <div class="field-label" style="margin-top:10px;">금액</div>
-      <input class="sib-input" id="leAmt" inputmode="numeric" placeholder="예: 40000">
-      <div class="field-label" style="margin-top:10px;">비고 (선택)</div>
-      <input class="sib-input" id="leNote" placeholder="예: 3명 입금">
-      <div class="toolbar">
-        <button class="btn block" id="leSave">추가</button>
-        <button class="btn secondary block" id="leCancel">취소</button>
+      <div id="leBulkForm" style="display:none;">
+        <div class="section-sub" style="margin:0 0 10px;">
+          한 줄에 내역 하나씩, <b>일자 구분 내역 금액</b> 순서로. 구분은 수입/지출(또는 +/-), 비고는 맨 뒤에 <b>|</b> 로 붙이면 함께 저장돼요.
+        </div>
+        <textarea class="sib-input" id="leBulkText" style="min-height:180px; font-family:ui-monospace,'SF Mono',Menlo,monospace; font-size:13px;" placeholder="15 수입 3분기 회비 40000
+20 지출 자매모임 송금 50000 | 박은희
+25 수입 교회 지원금 200000"></textarea>
+        <div class="toolbar">
+          <button class="btn block" id="leBulkSave">한번에 추가</button>
+          <button class="btn secondary block" id="leBulkCancel">취소</button>
+        </div>
       </div>
     `;
     document.getElementById("sheetOverlay").classList.add("show");
-    let type = "in";
-    body.querySelectorAll("#leType button").forEach(b=> b.addEventListener("click", ()=>{
-      type = b.dataset.v;
-      body.querySelectorAll("#leType button").forEach(x=>x.classList.toggle("sel-primary", x===b));
+
+    const modeBtns = body.querySelectorAll("#leMode button");
+    modeBtns.forEach(b=> b.addEventListener("click", ()=>{
+      modeBtns.forEach(x=>x.classList.toggle("sel-primary", x===b));
+      const bulk = b.dataset.v === "bulk";
+      document.getElementById("leSingleForm").style.display = bulk ? "none" : "block";
+      document.getElementById("leBulkForm").style.display = bulk ? "block" : "none";
     }));
+
+    let type = isEdit ? editEntry.type : "in";
+    function setType(v){
+      type = v;
+      body.querySelectorAll("#leType button").forEach(x=>x.classList.toggle("sel-primary", x.dataset.v===v));
+    }
+    body.querySelectorAll("#leType button").forEach(b=> b.addEventListener("click", ()=> setType(b.dataset.v)));
+
+    let cat = isEdit ? (LEDGER_CATS.includes(editEntry.cat) ? editEntry.cat : guessLedgerCat(editEntry.desc)) : "기타";
+    let catTouched = isEdit;
+    function setCat(c){
+      cat = LEDGER_CATS.includes(c) ? c : "기타";
+      body.querySelectorAll("#leCats button").forEach(x=>x.classList.toggle("sel", x.dataset.cat===cat));
+    }
+    setCat(cat);
+    body.querySelectorAll("#leCats button").forEach(b=> b.addEventListener("click", ()=>{ catTouched = true; setCat(b.dataset.cat); }));
+    const descInput = document.getElementById("leDesc");
+    descInput.addEventListener("input", ()=>{ if(!catTouched) setCat(guessLedgerCat(descInput.value)); });
+
+    body.querySelectorAll("#lePresets button").forEach(b=> b.addEventListener("click", ()=>{
+      const p = LEDGER_PRESETS[Number(b.dataset.preset)];
+      if(!p) return;
+      setType(p.type);
+      document.getElementById("leDesc").value = p.desc;
+      if(p.cat){ catTouched = true; setCat(p.cat); }
+      if(p.amt) document.getElementById("leAmt").value = p.amt.toLocaleString("ko-KR");
+      (p.amt ? document.getElementById("leDay") : document.getElementById("leAmt")).focus();
+    }));
+
     document.getElementById("leCancel").addEventListener("click", closeSheet);
     document.getElementById("leSave").addEventListener("click", ()=>{
       const desc = document.getElementById("leDesc").value.trim();
@@ -4157,11 +4328,52 @@
       if(!desc){ alert("내역을 입력해주세요."); return; }
       if(!amt){ alert("금액을 입력해주세요."); return; }
       if(!Array.isArray(state.finance.ledger[mo])) state.finance.ledger[mo] = [];
-      state.finance.ledger[mo].push({
-        id: "le_" + Date.now() + "_" + Math.floor(Math.random()*1000),
-        day: document.getElementById("leDay").value.trim(),
-        type, desc, amt,
-        note: document.getElementById("leNote").value.trim()
+      const day = document.getElementById("leDay").value.trim();
+      const note = document.getElementById("leNote").value.trim();
+      if(isEdit){
+        const entry = state.finance.ledger[mo].find(x=>x.id===editEntry.id);
+        if(entry){ entry.day = day; entry.type = type; entry.desc = desc; entry.amt = amt; entry.note = note; entry.cat = cat; }
+      } else {
+        state.finance.ledger[mo].push({
+          id: "le_" + Date.now() + "_" + Math.floor(Math.random()*1000),
+          day, type, desc, amt, note, cat
+        });
+      }
+      state.finance.ledger[mo].sort((a,b)=> (Number(a.day)||99) - (Number(b.day)||99));
+      saveState();
+      closeSheet();
+      renderLedger();
+    });
+
+    const leDel = document.getElementById("leDelete");
+    if(leDel) leDel.addEventListener("click", async ()=>{
+      closeSheet();
+      if(!(await customConfirm("이 내역을 삭제할까요?"))) return;
+      state.finance.ledger[mo] = (state.finance.ledger[mo]||[]).filter(x=>x.id!==editEntry.id);
+      saveState();
+      renderLedger();
+    });
+
+    const bulkCancel = document.getElementById("leBulkCancel");
+    if(bulkCancel) bulkCancel.addEventListener("click", closeSheet);
+    const bulkSave = document.getElementById("leBulkSave");
+    if(bulkSave) bulkSave.addEventListener("click", ()=>{
+      const raw = document.getElementById("leBulkText").value;
+      const arr = raw.split("\n").map(x=>x.trim()).filter(Boolean);
+      if(!arr.length){ alert("추가할 내역을 입력해주세요."); return; }
+      const parsed = [], errors = [];
+      arr.forEach((line,i)=>{
+        const r = parseBulkLedgerLine(line);
+        if(r.error) errors.push(`${i+1}번째 줄: ${r.error} (${line})`);
+        else parsed.push(r);
+      });
+      if(errors.length){ alert("다음 줄을 확인해주세요:\n\n" + errors.join("\n")); return; }
+      if(!Array.isArray(state.finance.ledger[mo])) state.finance.ledger[mo] = [];
+      parsed.forEach(p=>{
+        state.finance.ledger[mo].push({
+          id: "le_" + Date.now() + "_" + Math.floor(Math.random()*100000),
+          day: p.day, type: p.type, desc: p.desc, amt: p.amt, note: p.note, cat: p.cat
+        });
       });
       state.finance.ledger[mo].sort((a,b)=> (Number(a.day)||99) - (Number(b.day)||99));
       saveState();
@@ -4240,6 +4452,23 @@
     } else if(db){
       setPresence("실시간 동기화 중", true);
     }
+
+    // 새 버전 배포 감지 — 오래 켜둔 화면에 옛 코드가 남아 "수정이 안 되는" 상황 방지
+    const myBuild = (document.getElementById("buildStamp")||{}).textContent || "";
+    setInterval(async ()=>{
+      try{
+        const html = await (await fetch(location.pathname + "?_v=" + Date.now(), { cache:"no-store" })).text();
+        const m = html.match(/id="buildStamp"[^>]*>([^<]+)</);
+        if(m && myBuild && m[1].trim() !== myBuild.trim() && !document.getElementById("updateBanner")){
+          const b = document.createElement("button");
+          b.id = "updateBanner";
+          b.textContent = "🔄 새 버전이 나왔어요 — 눌러서 새로고침";
+          b.style.cssText = "position:fixed;left:12px;right:12px;bottom:70px;z-index:9999;padding:13px;border:none;border-radius:12px;background:var(--primary);color:#fff;font-family:inherit;font-size:14px;font-weight:800;box-shadow:var(--shadow-float);cursor:pointer;";
+          b.onclick = ()=> location.reload(true);
+          document.body.appendChild(b);
+        }
+      }catch(e){ /* ignore */ }
+    }, 120000);
   })();
 
   const peerCursorEls = new Map();
