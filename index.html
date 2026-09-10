@@ -899,7 +899,7 @@
     <div id="financeMemoView" style="display:none;"></div>
   </div>
 
-  <div id="buildStamp" style="text-align:center;font-size:10.5px;color:var(--ink-faint);font-weight:600;padding:14px 0 4px;">버전 2026.09.10-c</div>
+  <div id="buildStamp" style="text-align:center;font-size:10.5px;color:var(--ink-faint);font-weight:600;padding:14px 0 4px;">버전 2026.09.10-d</div>
 </main>
 </div>
 </div>
@@ -1079,7 +1079,7 @@
       linkedEventId: n.linkedEventId || null,
       body: typeof n.body === "string" ? n.body
           : (Array.isArray(n.blocks) && n.blocks.length ? blocksToText(n.blocks) : ""),
-      editingSince: typeof n.editingSince === "number" ? n.editingSince : null,
+      editingSince: null,
       createdAt: n.createdAt || Date.now(),
       updatedAt: n.updatedAt || Date.now()
     }));
@@ -1275,8 +1275,16 @@
     return panel ? panel.contains(active) : false;
   }
 
+  function isEditingNoteField(){
+    const a = document.activeElement;
+    if(!a) return false;
+    if(a.tagName!=="INPUT" && a.tagName!=="TEXTAREA" && a.tagName!=="SELECT") return false;
+    const p = document.getElementById("noteDetailView");
+    return p ? p.contains(a) : false;
+  }
+
   function isBusyForRemoteApply(){
-    return isEditingClassifyField() || isEditingFinanceField() || modalOpen || scheduleEditing || noteEditing;
+    return isEditingClassifyField() || isEditingFinanceField() || isEditingNoteField() || modalOpen || scheduleEditing;
   }
 
   function renderCurrentView(){
@@ -2903,12 +2911,9 @@
     return note;
   }
 
+  // (예전 "편집 중" 하트비트 제거 — 20초마다 전체 state 를 POST 해서 다른 화면 변경을 되돌리는 원인이었음)
   function stopNoteEditingHeartbeat(){
     if(noteHeartbeatTimer){ clearInterval(noteHeartbeatTimer); noteHeartbeatTimer = null; }
-    if(currentNoteId){
-      const n = state.notes.find(x=>x.id===currentNoteId);
-      if(n){ n.editingSince = null; saveState(); }
-    }
     noteEditing = false;
     closeSlashMenu();
   }
@@ -2920,14 +2925,6 @@
     if(noteReturnTo !== "schedule") noteReturnEventId = null;
     currentNoteId = id;
     noteView = "form";
-    noteEditing = true;
-    n.editingSince = Date.now();
-    saveState();
-    if(noteHeartbeatTimer) clearInterval(noteHeartbeatTimer);
-    noteHeartbeatTimer = setInterval(()=>{
-      const cur = state.notes.find(x=>x.id===currentNoteId);
-      if(cur){ cur.editingSince = Date.now(); saveState(); }
-    }, 20000);
     setView("notes");
     window.scrollTo({ top: 0 });
   }
