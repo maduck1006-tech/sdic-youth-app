@@ -705,12 +705,6 @@
   .fin-unpaid ul{ margin:10px 0 0; padding-left:18px; font-size:13px; line-height:1.9; color:var(--ink); }
   .fin-unpaid .pill{ font-size:11px; font-weight:700; color:var(--lvl1); background:var(--lvl1-tint); border-radius:6px; padding:1px 6px; margin-left:4px; }
   .report-ta{ width:100%; min-height:300px; border-radius:12px; border:none; background:var(--bg); padding:14px; font-size:12.5px; line-height:1.6; font-family:ui-monospace,"SF Mono",Menlo,monospace; color:var(--ink); white-space:pre; overflow:auto; }
-  .ledcat-list{ background:var(--paper); border-radius:var(--radius-md); box-shadow:var(--shadow-card); padding:6px 16px; margin-bottom:12px; }
-  .ledcat-row{ display:flex; justify-content:space-between; align-items:center; gap:10px; font-size:13px; font-weight:600; padding:8px 0; border-bottom:1px solid var(--line); }
-  .ledcat-row:last-child{ border-bottom:none; }
-  .ledcat-row .amt-pair{ display:flex; gap:8px; white-space:nowrap; font-variant-numeric:tabular-nums; font-weight:800; }
-  .ledcat-row .amt-pair .p{ color:var(--lvl3); } .ledcat-row .amt-pair .n{ color:var(--lvl1); }
-  .led-row[data-edit-entry]{ cursor:pointer; }
   .dues-table thead th[data-hmonth]{ cursor:pointer; }
   .dues-table thead th[data-hmonth]:active{ color:var(--primary); }
   .bulk-list{ max-height:46vh; overflow-y:auto; margin:10px -4px 0; }
@@ -3316,32 +3310,6 @@
     return (y==="2025" ? "25." : "") + Number(mm) + "월";
   }
   const LEDGER_MONTHS = ["2026-01","2026-02","2026-03","2026-04","2026-05","2026-06","2026-07","2026-08","2026-09","2026-10","2026-11","2026-12"];
-
-  // 장부 항목 분류. 내역 글자에 키워드가 들어가면 자동으로 잡고, 수정 창에서 직접 바꿀 수 있어요.
-  const LEDGER_CATS = ["회비","교회지원금","이자","헌금","모임비","활동비","강사비","기타"];
-  const LEDGER_CAT_RULES = [
-    { cat:"회비",      kws:["회비"] },
-    { cat:"교회지원금", kws:["교회지원","교회 지원","교회지원비"] },
-    { cat:"이자",      kws:["이자"] },
-    { cat:"헌금",      kws:["헌금"] },
-    { cat:"모임비",    kws:["자매모임","형제모임"] },
-    { cat:"활동비",    kws:["분반활동","MT","엠티","체육대회","운동회","여행","축구","풋살","레크","연합","수련회","야유회","캠프","꽃다발"] },
-    { cat:"강사비",    kws:["강사","초청","집회","다과"] }
-  ];
-  function guessLedgerCat(desc){
-    const d = String(desc || "");
-    for(const r of LEDGER_CAT_RULES){ if(r.kws.some(k=> d.includes(k))) return r.cat; }
-    return "기타";
-  }
-  // 매달 반복 항목 — 누르면 구분·내역·금액·분류가 한 번에 채워집니다.
-  const LEDGER_PRESETS = [
-    { label:"자매모임 5만",     type:"out", desc:"자매모임", amt:50000,  cat:"모임비" },
-    { label:"형제모임 5만",     type:"out", desc:"형제모임", amt:50000,  cat:"모임비" },
-    { label:"교회 지원금 20만", type:"in",  desc:"교회 지원금", amt:200000, cat:"교회지원금" },
-    { label:"분반활동비 20만",  type:"out", desc:"분반활동 지원금", amt:200000, cat:"활동비" },
-    { label:"세이프박스 이자",  type:"in",  desc:"세이프박스 이자", amt:0, cat:"이자" },
-    { label:"입출금 이자",      type:"in",  desc:"입출금 이자", amt:0, cat:"이자" }
-  ];
   const FIN_QUARTERS = {
     all: { label:"전체", months: MONTHS_DUES },
     q1:  { label:"3~6월", months:["2026-03","2026-04","2026-05","2026-06"] },
@@ -3575,8 +3543,7 @@
       ledger[mo] = arr.filter(e=>e && e.desc!=null).map((e,i)=>({
         id: e.id || ("le_"+mo+"_"+i+"_"+Math.floor(Math.random()*1000)),
         day: String(e.day||""), type: e.type==="in"?"in":"out",
-        desc: String(e.desc||""), amt: Number(e.amt)||0, note: String(e.note||""),
-        cat: LEDGER_CATS.includes(e.cat) ? e.cat : guessLedgerCat(e.desc)
+        desc: String(e.desc||""), amt: Number(e.amt)||0, note: String(e.note||"")
       }));
     });
     return {
