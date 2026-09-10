@@ -1235,6 +1235,10 @@
 
   let saveTimer = null;
   function saveState(){
+    // 방금 로컬 편집이 있었으므로, 아직 화면에 반영 안 한 원격 스냅샷(pendingRemoteState)은
+    // 이 편집보다 과거다 → 버린다. 안 그러면 편집창을 닫는 순간 옛 상태로 덮여 저장이 씹힌다.
+    pendingRemoteState = null;
+    lastUpdatedAt = Date.now();
     clearTimeout(saveTimer);
     saveTimer = setTimeout(()=>{
       if(db){
