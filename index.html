@@ -980,7 +980,7 @@
   let pendingRemoteState = null;
 
   const DEFAULT_SCHEDULE_TYPES = [
-    { id:"t_word",     name:"말씀",        roles:["강사"],              color:"#3182F6" },
+    { id:"t_word",     name:"말씀",        roles:["강사","사회","요약"], color:"#3182F6" },
     { id:"t_training", name:"사경회/훈련", roles:["강사","보조 담당"],  color:"#8B5CF6" },
     { id:"t_activity", name:"활동",        roles:["담당자"],            color:"#00C896" },
     { id:"t_regular",  name:"정기모임",    roles:["담당자"],            color:"#FF9F1C" },
@@ -1033,6 +1033,11 @@
           color: t.color || "#8B95A1"
         }))
       : DEFAULT_SCHEDULE_TYPES.map(t=>({ ...t, roles:[...t.roles] }));
+    // 이미 저장된 옛 상태에는 "말씀" 유형에 강사 역할만 있으므로, 사회·요약 역할을 한 번 보강해준다.
+    const wordType = types.find(t=>t.id === "t_word");
+    if(wordType){
+      ["사회","요약"].forEach(role=>{ if(!wordType.roles.includes(role)) wordType.roles.push(role); });
+    }
     const events = Array.isArray(raw.events)
       ? raw.events.filter(e=>e && e.id && e.startDate).map(e=>({
           id: e.id,
