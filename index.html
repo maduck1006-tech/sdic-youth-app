@@ -1367,7 +1367,7 @@
   };
   // 조장 전용 화면: URL에 ?leader=1 을 붙여서 들어온 경우에만 명단·분류·조 편성이 보인다.
   // 일반 조원에게 나눠주는 기본 링크에는 이 탭들이 아예 나타나지 않는다.
-  const LEADER_ONLY_VIEWS = ["roster", "classify", "board"];
+  const LEADER_ONLY_VIEWS = ["roster", "classify", "board", "notes"];
   const isLeaderMode = new URLSearchParams(location.search).get("leader") === "1";
   let currentView = isLeaderMode ? "classify" : "schedule";
 
