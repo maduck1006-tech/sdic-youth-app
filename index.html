@@ -852,22 +852,25 @@
     <div id="scheduleCalendarView">
       <div class="toolbar" style="margin:0 0 14px;">
         <button class="btn" id="addEventBtn">+ 일정 추가</button>
+        <button class="btn secondary" id="calImageBtn">🖼️ 이미지로 저장</button>
       </div>
-      <div class="cal-wrap">
-        <div class="cal-head">
-          <div class="cal-title" id="calTitle"></div>
-          <div class="cal-nav">
-            <button id="calPrev" title="이전 달">‹</button>
-            <button id="calToday" style="width:auto; padding:0 12px;">오늘</button>
-            <button id="calNext" title="다음 달">›</button>
+      <div id="calCaptureArea">
+        <div class="cal-wrap">
+          <div class="cal-head">
+            <div class="cal-title" id="calTitle"></div>
+            <div class="cal-nav">
+              <button id="calPrev" title="이전 달">‹</button>
+              <button id="calToday" style="width:auto; padding:0 12px;">오늘</button>
+              <button id="calNext" title="다음 달">›</button>
+            </div>
           </div>
+          <div class="cal-grid" id="calGrid"></div>
         </div>
-        <div class="cal-grid" id="calGrid"></div>
-      </div>
 
-      <div class="section-title">다가오는 일정</div>
-      <div class="section-sub">담당자가 아직 정해지지 않은 일정은 노란 표시로 알려드려요.</div>
-      <div id="upcomingList"></div>
+        <div class="section-title">다가오는 일정</div>
+        <div class="section-sub">담당자가 아직 정해지지 않은 일정은 노란 표시로 알려드려요.</div>
+        <div id="upcomingList"></div>
+      </div>
     </div>
 
     <div id="scheduleDetailView" style="display:none;"></div>
@@ -2058,6 +2061,27 @@
     URL.revokeObjectURL(url);
   }
 
+  // 일정 캘린더/목록처럼 화면에 이미 있는 특정 영역을 그대로 이미지로 저장할 때 쓰는 범용 헬퍼.
+  async function saveAreaAsImage(elId, filename, btn){
+    const target = document.getElementById(elId);
+    if(!target) return;
+    if(typeof html2canvas !== "function"){
+      alert("이미지 저장 기능을 불러오지 못했어요. 인터넷 연결을 확인하고 다시 시도해주세요.");
+      return;
+    }
+    const originalText = btn ? btn.textContent : null;
+    if(btn){ btn.textContent = "이미지 만드는 중…"; btn.disabled = true; }
+    try{
+      const canvas = await html2canvas(target, { backgroundColor:"#ffffff", scale:2, useCORS:true });
+      await saveCanvasAsPng(canvas, filename);
+    }catch(e){
+      console.error("이미지 생성 실패", e);
+      alert("이미지를 만드는 중 문제가 생겼어요. 다시 시도해주세요.");
+    }finally{
+      if(btn){ btn.textContent = originalText; btn.disabled = false; }
+    }
+  }
+
   document.getElementById("saveCleanImageBtn").addEventListener("click", async ()=>{
     const btn = document.getElementById("saveCleanImageBtn");
     if(typeof html2canvas !== "function"){
@@ -2343,14 +2367,18 @@
     wrap.innerHTML = `
       <div class="toolbar" style="margin:0 0 16px;">
         <button class="btn" id="listAddEvent">+ 새 일정</button>
+        <button class="btn secondary" id="listImageBtn">🖼️ 이미지로 저장</button>
       </div>
-      <div class="section-title" style="margin-top:4px;">등록된 일정 · ${all.length}건</div>
-      <div class="section-sub">일정을 누르면 담당자·메모를 수정할 수 있어요.</div>
-      ${all.length ? "" : `<div class="versions-empty">아직 등록된 일정이 없어요. 위 "+ 새 일정"으로 추가해보세요.</div>`}
-      ${upcoming.length ? upcoming.map(eventCardHTML).join("") : ""}
-      ${past.length ? `<div class="section-title">지난 일정</div>${past.map(eventCardHTML).join("")}` : ""}
+      <div id="listCaptureArea">
+        <div class="section-title" style="margin-top:4px;">등록된 일정 · ${all.length}건</div>
+        <div class="section-sub">일정을 누르면 담당자·메모를 수정할 수 있어요.</div>
+        ${all.length ? "" : `<div class="versions-empty">아직 등록된 일정이 없어요. 위 "+ 새 일정"으로 추가해보세요.</div>`}
+        ${upcoming.length ? upcoming.map(eventCardHTML).join("") : ""}
+        ${past.length ? `<div class="section-title">지난 일정</div>${past.map(eventCardHTML).join("")}` : ""}
+      </div>
     `;
     wrap.querySelectorAll("[data-eid]").forEach(c=> c.addEventListener("click", ()=> openEvent(c.dataset.eid)));
+    document.getElementById("listImageBtn").addEventListener("click", ()=> saveAreaAsImage("listCaptureArea", `청년부_일정목록.png`, document.getElementById("listImageBtn")));
     document.getElementById("listAddEvent").addEventListener("click", ()=> openNewEvent(todayStr()));
   }
 
@@ -2464,6 +2492,7 @@
     renderCalendar();
   });
   document.getElementById("addEventBtn").addEventListener("click", ()=> openNewEvent(todayStr()));
+  document.getElementById("calImageBtn").addEventListener("click", ()=> saveAreaAsImage("calCaptureArea", `청년부_일정캘린더.png`, document.getElementById("calImageBtn")));
 
   function whoRowHTML(e){
     // 공휴일처럼 담당자 역할 자체가 없는 유형은 "담당자 미정" 표시를 하지 않습니다.
