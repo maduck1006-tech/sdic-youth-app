@@ -1365,13 +1365,18 @@
     notes: "회의 내용을 자유롭게 기록해요",
     finance: "회비 입금 여부와 월별 입출금 내역을 관리해요"
   };
-  let currentView = "classify";
+  // 조장 전용 화면: URL에 ?leader=1 을 붙여서 들어온 경우에만 명단·분류·조 편성이 보인다.
+  // 일반 조원에게 나눠주는 기본 링크에는 이 탭들이 아예 나타나지 않는다.
+  const LEADER_ONLY_VIEWS = ["roster", "classify", "board"];
+  const isLeaderMode = new URLSearchParams(location.search).get("leader") === "1";
+  let currentView = isLeaderMode ? "classify" : "schedule";
 
   // 모바일(사이드바가 하단탭으로 바뀌는 폭)에서는 조 편성 수정을 막는다.
   function isMobile(){ return !window.matchMedia || window.matchMedia("(max-width:899px)").matches; }
 
   function setView(v){
     if(!VIEW_TITLES[v]) return;
+    if(LEADER_ONLY_VIEWS.includes(v) && !isLeaderMode) return;
     if(currentView === "notes" && v !== "notes") stopNoteEditingHeartbeat();
     currentView = v;
     document.querySelectorAll("[data-view]").forEach(b=> b.classList.toggle("active", b.dataset.view === v));
@@ -1393,6 +1398,20 @@
       window.scrollTo({ top: 0 });
     });
   });
+
+  // 조장 전용 탭(명단 관리·분류·조 편성)은 ?leader=1 링크로 들어온 경우에만 노출한다.
+  // state 로딩 전이라 아직 render*() 는 못 부르니, 패널/탭 표시만 currentView 기준으로 맞춰둔다.
+  // 실제 내용 렌더링은 state 준비 후 init() → renderCurrentView() 가 담당한다.
+  if(!isLeaderMode){
+    document.querySelectorAll("[data-view]").forEach(btn=>{
+      if(LEADER_ONLY_VIEWS.includes(btn.dataset.view)) btn.style.display = "none";
+    });
+    document.querySelectorAll("[data-view]").forEach(b=> b.classList.toggle("active", b.dataset.view === currentView));
+    document.querySelectorAll(".panel").forEach(p=> p.classList.remove("active"));
+    document.getElementById("panel-" + currentView).classList.add("active");
+    document.getElementById("viewTitle").textContent = VIEW_TITLES[currentView];
+    document.getElementById("viewSub").textContent = VIEW_SUBS[currentView];
+  }
 
   // 화면 폭이 모바일↔PC 경계를 넘으면 조 편성 화면을 다시 그린다(드래그 활성/비활성 갱신).
   let lastMobile = isMobile();
