@@ -465,12 +465,15 @@
   .cal-grid{ display:grid; grid-template-columns:repeat(7,1fr); gap:2px; }
   .cal-dow{ text-align:center; font-size:11px; font-weight:700; color:var(--ink-faint); padding:4px 0 8px; }
   .cal-dow.sun{ color:var(--female); }
+  .cal-dow.sat{ color:var(--male); }
   .cal-cell{
     min-height:54px; border-radius:11px; border:none; background:transparent; cursor:pointer;
     display:flex; flex-direction:column; align-items:center; gap:5px; padding:8px 2px 6px; font-family:inherit;
   }
   .cal-cell .d{ font-size:13px; font-weight:700; color:var(--ink); font-variant-numeric:tabular-nums; }
   .cal-cell.sun .d{ color:var(--female); }
+  .cal-cell.sat .d{ color:var(--male); }
+  .cal-cell.holiday .d{ color:var(--female); }
   .cal-cell.out{ opacity:.34; }
   .cal-cell.has{ background:var(--bg); }
   .cal-cell.today{ background:var(--primary-tint); box-shadow:inset 0 0 0 1.5px var(--primary); }
@@ -985,7 +988,7 @@
     { id:"t_activity", name:"활동",        roles:["담당자"],            color:"#00C896" },
     { id:"t_regular",  name:"정기모임",    roles:["담당자"],            color:"#FF9F1C" },
     { id:"t_etc",      name:"행사",        roles:["담당자"],            color:"#F0436E" },
-    { id:"t_holiday",  name:"공휴일",      roles:[],                    color:"#8B95A1" }
+    { id:"t_holiday",  name:"공휴일",      roles:[],                    color:"#F0436E" }
   ];
 
   // 전달받은 '2026년 하반기 청년부 운영' 문서 기준 초기 일정입니다. 자유롭게 수정/삭제하세요.
@@ -1003,6 +1006,18 @@
     { title:"개천절 대체공휴일", startDate:"2026-10-05", typeId:"t_holiday", tags:[], assignments:{}, memo:"" },
     { title:"한글날",      startDate:"2026-10-09", typeId:"t_holiday", tags:[], assignments:{}, memo:"" },
     { title:"성탄절",      startDate:"2026-12-25", typeId:"t_holiday", tags:[], assignments:{}, memo:"" }
+  ];
+
+  // 성경/구원론 말씀 순서표 (2026년 9~12월). 기존 상태에도 한 번만 보강되도록 normalizeSchedule에서 사용한다.
+  const MIGRATION_WORD_EVENTS = [
+    { id:"e_word_bible_5_6",     title:"성경 5과~6과",   startDate:"2026-09-19", tags:["성경"], assignments:{ "강사":["강한성"], "사회":["김평안"], "요약":["김시원"] } },
+    { id:"e_word_bible_7_8",     title:"성경 7과~8과",   startDate:"2026-10-03", tags:["성경"], assignments:{ "강사":["박근우"], "사회":["이호민"], "요약":["김건"] } },
+    { id:"e_word_salvation_1_2", title:"구원 1과~2과",   startDate:"2026-10-10", tags:["구원"], assignments:{ "강사":["공의민"], "사회":["박주형"], "요약":["장영찬"] } },
+    { id:"e_word_salvation_3_4", title:"구원 3과~4과",   startDate:"2026-10-17", tags:["구원"], assignments:{ "강사":["윤혁"],   "사회":["공의현"], "요약":["김영진"] } },
+    { id:"e_word_salvation_5_6", title:"구원 5과~6과",   startDate:"2026-11-21", tags:["구원"], assignments:{ "강사":["박근우"], "사회":["김영진"], "요약":["공의현"] } },
+    { id:"e_word_salvation_7_8", title:"구원 7과~8과",   startDate:"2026-11-28", tags:["구원"], assignments:{ "사회":["장영찬"], "요약":["박주형"] } },
+    { id:"e_word_salvation_9_10",title:"구원 9과~10과",  startDate:"2026-12-05", tags:["구원"], assignments:{ "사회":["김건"],   "요약":["이호민"] } },
+    { id:"e_word_salvation_11_12",title:"구원 11과~12과",startDate:"2026-12-12", tags:["구원"], assignments:{ "사회":["김시원"], "요약":["김평안"] } }
   ];
 
   function seedSchedule(){
@@ -1038,6 +1053,11 @@
     if(wordType){
       ["사회","요약"].forEach(role=>{ if(!wordType.roles.includes(role)) wordType.roles.push(role); });
     }
+    // 이미 저장된 옛 상태의 "공휴일" 유형은 회색이었으므로, 눈에 띄게 빨간색으로 한 번 보강해준다.
+    const holidayType = types.find(t=>t.id === "t_holiday");
+    if(holidayType && holidayType.color === "#8B95A1"){
+      holidayType.color = "#F0436E";
+    }
     const events = Array.isArray(raw.events)
       ? raw.events.filter(e=>e && e.id && e.startDate).map(e=>({
           id: e.id,
@@ -1052,6 +1072,25 @@
           updatedAt: e.updatedAt || Date.now()
         }))
       : [];
+    // 2026년 하반기 성경·구원론 말씀 순서표를 한 번 보강해준다 (이미 저장된 상태에는 없을 수 있으므로).
+    const existingIds = new Set(events.map(e=>e.id));
+    MIGRATION_WORD_EVENTS.forEach(e=>{
+      if(!existingIds.has(e.id)){
+        const now = Date.now();
+        events.push({
+          id: e.id,
+          title: e.title,
+          startDate: e.startDate,
+          endDate: null,
+          typeId: "t_word",
+          tags: e.tags,
+          assignments: e.assignments,
+          memo: "",
+          createdAt: now,
+          updatedAt: now
+        });
+      }
+    });
     return { types, events };
   }
 
@@ -1165,7 +1204,7 @@
     // (매번 채우면 사용자가 지운 공휴일이 동기화 때마다 되살아납니다)
     if(!s.holidaysSeeded){
       if(!out.schedule.types.some(t=>t.id==="t_holiday")){
-        out.schedule.types.push({ id:"t_holiday", name:"공휴일", roles:[], color:"#8B95A1" });
+        out.schedule.types.push({ id:"t_holiday", name:"공휴일", roles:[], color:"#F0436E" });
       }
       const seedHolidays = seedSchedule().events.filter(e=>e.typeId==="t_holiday");
       const already = new Set(out.schedule.events.filter(e=>e.typeId==="t_holiday").map(e=>e.startDate));
@@ -2408,7 +2447,7 @@
 
   function renderCalendar(){
     document.getElementById("calTitle").textContent = `${calYear}년 ${calMonth+1}월`;
-    let html = DOW.map((d,i)=>`<div class="cal-dow ${i===0?'sun':''}">${d}</div>`).join("");
+    let html = DOW.map((d,i)=>`<div class="cal-dow ${i===0?'sun':''}${i===6?'sat':''}">${d}</div>`).join("");
     const first = new Date(calYear, calMonth, 1);
     const cursor = new Date(calYear, calMonth, 1 - first.getDay());
     const today = todayStr();
@@ -2431,7 +2470,8 @@
         </span>`;
       }).join("");
       const moreText = "";
-      html += `<button class="cal-cell ${out?'out':''} ${ds===today?'today':''} ${cursor.getDay()===0?'sun':''} ${evs.length && ds!==today ? 'has':''}" data-date="${ds}">
+      const isHoliday = evs.some(e=>e.typeId==="t_holiday");
+      html += `<button class="cal-cell ${out?'out':''} ${ds===today?'today':''} ${cursor.getDay()===0?'sun':''} ${cursor.getDay()===6?'sat':''} ${isHoliday?'holiday':''} ${evs.length && ds!==today ? 'has':''}" data-date="${ds}">
         <span class="d">${cursor.getDate()}</span>
         <span class="cal-dots">${dots}${more}</span>
         <span class="cal-events">${chips}${moreText}</span>
