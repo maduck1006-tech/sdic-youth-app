@@ -709,6 +709,12 @@
   .led-tot{ display:flex; gap:6px; margin-top:12px; font-size:11px; font-weight:700; flex-wrap:wrap; }
   .led-tot span{ background:var(--bg); border-radius:999px; padding:5px 10px; font-variant-numeric:tabular-nums; }
   .fin-memo{ width:100%; min-height:220px; border-radius:var(--radius-md); border:none; background:var(--paper); box-shadow:var(--shadow-card); padding:16px; font-size:13.5px; line-height:1.7; font-family:inherit; color:var(--ink); }
+  #panel-gospel input[type="text"], #panel-gospel input[type="date"]{
+    font:inherit; font-size:14px; color:var(--ink); background:var(--paper); border:1.5px solid var(--line);
+    border-radius:10px; padding:9px 11px; outline:none; box-sizing:border-box;
+  }
+  #panel-gospel input:focus{ border-color:var(--primary); }
+  #panel-gospel .chip{ border:none; cursor:pointer; font-family:inherit; }
   .fin-stats{ display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px; }
   .fin-stat{ flex:1; min-width:92px; background:var(--paper); border-radius:14px; box-shadow:var(--shadow-card); padding:12px 12px 10px; }
   .fin-stat .s-k{ font-size:11px; font-weight:700; color:var(--ink-soft); margin-bottom:3px; }
@@ -756,6 +762,7 @@
   <button class="nav-item" data-view="schedule"><span class="ico">📅</span>일정 관리</button>
   <button class="nav-item" data-view="notes"><span class="ico">📝</span>회의록</button>
   <button class="nav-item" data-view="finance"><span class="ico">💰</span>회비·장부</button>
+  <button class="nav-item" data-view="gospel"><span class="ico">🎬</span>복음집회</button>
 </aside>
 
 <div class="content">
@@ -919,7 +926,17 @@
     <div id="financeMemoView" style="display:none;"></div>
   </div>
 
-  <div id="buildStamp" style="text-align:center;font-size:10.5px;color:var(--ink-faint);font-weight:600;padding:14px 0 4px;">버전 2026.09.10-d</div>
+  <!-- 복음집회 영상 준비 -->
+  <div class="panel" id="panel-gospel">
+    <div class="sub-tabs" id="gospelSubTabs" style="max-width:420px;">
+      <button data-sub="dash" class="active">📊 현황</button>
+      <button data-sub="prod">🎬 제작</button>
+      <button data-sub="apply">📝 신청</button>
+    </div>
+    <div id="gospelBody"></div>
+  </div>
+
+  <div id="buildStamp" style="text-align:center;font-size:10.5px;color:var(--ink-faint);font-weight:600;padding:14px 0 4px;">버전 2026.10.07-a</div>
 </main>
 </div>
 </div>
@@ -931,6 +948,7 @@
   <button data-view="schedule"><span class="ico">📅</span>일정</button>
   <button data-view="notes"><span class="ico">📝</span>회의록</button>
   <button data-view="finance"><span class="ico">💰</span>회비</button>
+  <button data-view="gospel"><span class="ico">🎬</span>집회</button>
 </nav>
 
 <!-- 자동 배정 기능은 비활성화됨 (요청) -->
@@ -1156,6 +1174,7 @@
       teachersSeeded: true,
       schedule: seedSchedule(),
       finance: seedFinance(),
+      gospel: normalizeGospel(null),
       notes: [],
       members: MEMBER_NAMES.map((name,i)=>({
         id: "m"+i, name, gender: null, level: null, genderGuessed: false,
@@ -1180,6 +1199,7 @@
       versions: Array.isArray(s.versions) ? s.versions : [],
       schedule: normalizeSchedule(s.schedule),
       finance: normalizeFinance(s.finance),
+      gospel: normalizeGospel(s.gospel),
       notes: normalizeNotes(s.notes),
       members: Array.isArray(s.members) ? s.members.map(m=>({
         id: m.id, name: m.name,
@@ -1345,7 +1365,7 @@
   }
 
   function isBusyForRemoteApply(){
-    return isEditingClassifyField() || isEditingFinanceField() || isEditingNoteField() || modalOpen || scheduleEditing;
+    return isEditingClassifyField() || isEditingFinanceField() || isEditingNoteField() || isEditingGospelField() || modalOpen || scheduleEditing;
   }
 
   function renderCurrentView(){
@@ -1356,6 +1376,7 @@
     else if(currentView === "schedule") renderSchedule();
     else if(currentView === "notes") renderNotes();
     else if(currentView === "finance") renderFinance();
+    else if(currentView === "gospel") renderGospel();
   }
 
   function flushPendingRemoteStateIfIdle(){
@@ -1413,7 +1434,8 @@
     board: "조 편성",
     schedule: "일정 관리",
     notes: "회의록",
-    finance: "회비 · 장부"
+    finance: "회비 · 장부",
+    gospel: "복음집회 준비"
   };
   const VIEW_SUBS = {
     roster: "인원을 추가하거나 명단에서 빼요",
@@ -1421,11 +1443,12 @@
     board: "균형에 맞춰 조를 나누고 저장해요",
     schedule: "하반기 일정과 담당자를 관리해요",
     notes: "회의 내용을 자유롭게 기록해요",
-    finance: "회비 입금 여부와 월별 입출금 내역을 관리해요"
+    finance: "회비 입금 여부와 월별 입출금 내역을 관리해요",
+    gospel: "11/14 복음집회 영상 제작과 신청 현황을 한눈에 봐요"
   };
   // 조장 전용 화면: URL에 ?leader=1 을 붙여서 들어온 경우에만 명단·분류·조 편성이 보인다.
   // 일반 조원에게 나눠주는 기본 링크에는 이 탭들이 아예 나타나지 않는다.
-  const LEADER_ONLY_VIEWS = ["roster", "classify", "board", "notes", "finance"];
+  const LEADER_ONLY_VIEWS = ["roster", "classify", "board", "notes", "finance", "gospel"];
   const isLeaderMode = new URLSearchParams(location.search).get("leader") === "1";
   let currentView = isLeaderMode ? "classify" : "schedule";
 
@@ -1448,6 +1471,7 @@
     if(v === "schedule") renderSchedule();
     if(v === "notes") renderNotes();
     if(v === "finance") renderFinance();
+    if(v === "gospel") renderGospel();
   }
 
   document.querySelectorAll("[data-view]").forEach(btn=>{
@@ -3848,6 +3872,182 @@
       L.push(`${c}  ${parts.join(" / ")}`);
     });
     return L.join("\n");
+  }
+
+
+  // ================= 복음집회 영상 준비 =================
+  const GOSPEL_EVENT = "2026-11-14";
+  const GOSPEL_DEADLINE = "2026-11-08";
+  const GOSPEL_VIDEOS = [
+    { id:"v1", title:"영상1 초대 티저", len:"30~60초", up:"2026-10-18" },
+    { id:"v2", title:"영상2 성도 간증", len:"1~2분",  up:"2026-10-25" },
+    { id:"v3", title:"영상3 안내·신청방법", len:"1~2분", up:"2026-11-01" },
+    { id:"v4", title:"영상4 마감 리마인드", len:"30~60초", up:"2026-11-05" }
+  ];
+  const GOSPEL_STEPS = [ ["script","대본",-10], ["shoot","촬영",-8], ["edit","편집",-3], ["upload","업로드",0] ];
+  const GOSPEL_ROLES = [
+    ["pm","총괄(PM)","일정·진행 체크"], ["script","대본 기획","메시지 정리·대본"],
+    ["shoot","촬영","촬영·조명·음향"], ["host","출연-진행자","영상 진행"],
+    ["guest","출연-간증자","영상2 간증(여러 명 가능)"], ["edit","편집","컷편집·자막·썸네일"],
+    ["promo","홍보·배포","단체방 업로드·미신청자 연락"]
+  ];
+  const GOSPEL_STATUS = ["대기","진행중","완료"];
+
+  function gospelAddDays(iso, n){
+    const d = new Date(iso + "T00:00:00"); d.setDate(d.getDate() + n);
+    return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
+  }
+  function gospelDday(iso){
+    const t = new Date(); t.setHours(0,0,0,0);
+    return Math.round((new Date(iso + "T00:00:00") - t) / 86400000);
+  }
+  function gospelMD(iso){ return Number(iso.slice(5,7)) + "/" + Number(iso.slice(8,10)); }
+
+  function normalizeGospel(raw){
+    const g = raw && typeof raw === "object" ? raw : {};
+    const tasks = {};
+    GOSPEL_VIDEOS.forEach(v=> GOSPEL_STEPS.forEach(([k,,off])=>{
+      const key = v.id + "_" + k, old = (g.tasks && g.tasks[key]) || {};
+      tasks[key] = {
+        owner: typeof old.owner === "string" ? old.owner : "",
+        due: typeof old.due === "string" && old.due ? old.due : gospelAddDays(v.up, off),
+        status: GOSPEL_STATUS.includes(old.status) ? old.status : "대기"
+      };
+    }));
+    const roles = {};
+    GOSPEL_ROLES.forEach(([k])=> roles[k] = (g.roles && typeof g.roles[k] === "string") ? g.roles[k] : "");
+    return {
+      goal: typeof g.goal === "string" ? g.goal : "",
+      formUrl: typeof g.formUrl === "string" ? g.formUrl : "",
+      tasks, roles,
+      applied: (g.applied && typeof g.applied === "object") ? g.applied : {}
+    };
+  }
+
+  let gospelSub = "dash";
+  function isEditingGospelField(){
+    const a = document.activeElement;
+    if(!a || (a.tagName!=="INPUT" && a.tagName!=="SELECT")) return false;
+    const p = document.getElementById("panel-gospel");
+    return p ? p.contains(a) : false;
+  }
+  document.getElementById("gospelSubTabs").addEventListener("click", (e)=>{
+    const b = e.target.closest("button[data-sub]"); if(!b) return;
+    gospelSub = b.dataset.sub; renderGospel();
+  });
+
+  function gospelMembers(){
+    return state.members.filter(m=> m.role !== "교사").sort((a,b)=> a.name.localeCompare(b.name, "ko"));
+  }
+
+  function renderGospel(){
+    if(!state.gospel) state.gospel = normalizeGospel(null);
+    document.querySelectorAll("#gospelSubTabs button").forEach(b=> b.classList.toggle("active", b.dataset.sub === gospelSub));
+    const wrap = document.getElementById("gospelBody");
+    if(gospelSub === "dash") wrap.innerHTML = gospelDashHtml();
+    else if(gospelSub === "prod") wrap.innerHTML = gospelProdHtml();
+    else wrap.innerHTML = gospelApplyHtml();
+    bindGospel(wrap);
+  }
+
+  function gospelDashHtml(){
+    const g = state.gospel, ms = gospelMembers();
+    const applied = ms.filter(m=> g.applied[m.id]).length;
+    const goal = Number(g.goal) || 0;
+    const rate = ms.length ? Math.round(applied / ms.length * 100) : 0;
+    const goalRate = goal ? Math.round(applied / goal * 100) : null;
+    const all = GOSPEL_VIDEOS.length * GOSPEL_STEPS.length;
+    const done = Object.values(g.tasks).filter(t=> t.status === "완료").length;
+    const prodRate = Math.round(done / all * 100);
+    const dd = n => n > 0 ? "D-" + n : n === 0 ? "D-DAY" : "D+" + (-n);
+    const late = [];
+    GOSPEL_VIDEOS.forEach(v=> GOSPEL_STEPS.forEach(([k,label])=>{
+      const t = g.tasks[v.id + "_" + k];
+      if(t.status !== "완료" && gospelDday(t.due) < 0) late.push(`${v.title} · ${label} (${gospelMD(t.due)}${t.owner ? " · " + esc(t.owner) : ""})`);
+    }));
+    const next = GOSPEL_VIDEOS.find(v=> gospelDday(v.up) >= 0);
+    return `
+      <div class="fin-stats">
+        <div class="fin-stat"><div class="s-k">집회까지</div><div class="s-v">${dd(gospelDday(GOSPEL_EVENT))}</div></div>
+        <div class="fin-stat"><div class="s-k">신청 마감(11/8)</div><div class="s-v">${dd(gospelDday(GOSPEL_DEADLINE))}</div></div>
+        <div class="fin-stat"><div class="s-k">신청</div><div class="s-v pos">${applied}/${ms.length}</div></div>
+        <div class="fin-stat"><div class="s-k">제작 진행</div><div class="s-v">${prodRate}%</div></div>
+      </div>
+      <div class="section-title">신청률 ${rate}%</div>
+      <div class="fin-rate"><i style="width:${rate}%"></i></div>
+      <div class="section-sub" style="margin-top:8px;">
+        신청 목표 <input id="gospelGoal" type="text" inputmode="numeric" value="${esc(g.goal)}" placeholder="미정" style="width:64px;text-align:center;"> 명
+        ${goalRate !== null ? ` · 목표 대비 <b>${goalRate}%</b>` : ""}
+      </div>
+      <div class="section-sub">신청 링크 <input id="gospelForm" type="text" value="${esc(g.formUrl)}" placeholder="구글폼 링크를 붙여넣기" style="width:100%;max-width:420px;"></div>
+      <div class="section-title">${late.length ? "⚠️ 마감 지난 작업 " + late.length + "건" : "✅ 지연된 작업 없음"}</div>
+      ${late.length ? `<ul class="section-sub" style="margin:0;padding-left:18px;">${late.map(x=>`<li>${x}</li>`).join("")}</ul>` : ""}
+      ${next ? `<div class="section-sub" style="margin-top:12px;">다음 업로드: <b>${esc(next.title)}</b> · ${gospelMD(next.up)}(${dd(gospelDday(next.up))})</div>` : ""}
+    `;
+  }
+
+  function gospelProdHtml(){
+    const g = state.gospel;
+    const nameList = Object.values(g.roles).filter(Boolean).join(",").split(",").map(x=>x.trim()).filter(Boolean);
+    const roleRows = GOSPEL_ROLES.map(([k,label,desc])=>`
+      <div style="display:flex;gap:8px;align-items:center;margin:6px 0;">
+        <div style="width:92px;font-weight:800;font-size:13.5px;">${label}</div>
+        <input data-role="${k}" type="text" value="${esc(g.roles[k])}" placeholder="이름 (${esc(desc)})" style="flex:1;min-width:0;">
+      </div>`).join("");
+    const vids = GOSPEL_VIDEOS.map(v=>`
+      <div class="section-title" style="font-size:15px;margin-top:20px;">${esc(v.title)} <span class="stat-pill">${v.len}</span> <span class="stat-pill">업로드 ${gospelMD(v.up)}</span></div>
+      ${GOSPEL_STEPS.map(([k,label])=>{
+        const key = v.id + "_" + k, t = g.tasks[key];
+        const late = t.status !== "완료" && gospelDday(t.due) < 0;
+        const color = t.status === "완료" ? "var(--live-dot)" : t.status === "진행중" ? "var(--primary)" : "var(--ink-soft)";
+        return `<div style="display:flex;gap:8px;align-items:center;margin:6px 0;${late?"color:#E5484D;":""}">
+          <div style="width:44px;font-weight:700;font-size:13.5px;">${label}</div>
+          <input data-owner="${key}" type="text" value="${esc(t.owner)}" placeholder="담당자" style="flex:1;min-width:0;">
+          <input data-due="${key}" type="date" value="${t.due}" style="width:128px;">
+          <button class="chip sel" data-status="${key}" style="background:${color};min-width:58px;">${t.status}</button>
+        </div>`;
+      }).join("")}`).join("");
+    return `<div class="section-title">👥 역할 · 담당자</div>${roleRows}${vids}
+      <div class="section-sub" style="margin-top:14px;">상태 버튼을 누르면 대기 → 진행중 → 완료 순으로 바뀌어요. 마감이 지났는데 완료가 아니면 빨간색으로 표시돼요.</div>`;
+  }
+
+  function gospelApplyHtml(){
+    const g = state.gospel, ms = gospelMembers();
+    const yes = ms.filter(m=> g.applied[m.id]), no = ms.filter(m=> !g.applied[m.id]);
+    const chip = (m, on) => `<button class="chip person ${on ? "sel" : "plain"}" data-apply="${m.id}" style="${on ? "background:var(--primary);" : ""}">${on ? "✓ " : ""}${esc(m.name)}</button>`;
+    return `
+      <div class="section-sub">구글폼 응답을 보고 이름을 눌러 신청 완료로 표시하세요. 교사는 제외돼요.</div>
+      <div class="section-title">미신청 ${no.length}명 <button class="btn secondary" id="gospelCopyNo" style="padding:6px 12px;font-size:12.5px;margin-left:8px;">이름 복사</button></div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;">${no.map(m=>chip(m,false)).join("") || "<span class='section-sub'>모두 신청했어요 🎉</span>"}</div>
+      <div class="section-title">신청 완료 ${yes.length}명</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;">${yes.map(m=>chip(m,true)).join("") || "<span class='section-sub'>아직 없어요</span>"}</div>`;
+  }
+
+  function bindGospel(wrap){
+    const g = state.gospel;
+    const commit = ()=> saveState();
+    wrap.querySelectorAll("[data-apply]").forEach(b=> b.addEventListener("click", ()=>{
+      const id = b.dataset.apply;
+      if(g.applied[id]) delete g.applied[id]; else g.applied[id] = true;
+      commit(); renderGospel();
+    }));
+    wrap.querySelectorAll("[data-status]").forEach(b=> b.addEventListener("click", ()=>{
+      const t = g.tasks[b.dataset.status];
+      t.status = GOSPEL_STATUS[(GOSPEL_STATUS.indexOf(t.status) + 1) % 3];
+      commit(); renderGospel();
+    }));
+    wrap.querySelectorAll("[data-owner]").forEach(i=> i.addEventListener("change", ()=>{ g.tasks[i.dataset.owner].owner = i.value.trim(); commit(); }));
+    wrap.querySelectorAll("[data-due]").forEach(i=> i.addEventListener("change", ()=>{ if(i.value){ g.tasks[i.dataset.due].due = i.value; commit(); renderGospel(); } }));
+    wrap.querySelectorAll("[data-role]").forEach(i=> i.addEventListener("change", ()=>{ g.roles[i.dataset.role] = i.value.trim(); commit(); }));
+    const goal = wrap.querySelector("#gospelGoal");
+    if(goal) goal.addEventListener("change", ()=>{ g.goal = goal.value.replace(/[^0-9]/g,""); commit(); renderGospel(); });
+    const form = wrap.querySelector("#gospelForm");
+    if(form) form.addEventListener("change", ()=>{ g.formUrl = form.value.trim(); commit(); });
+    const copy = wrap.querySelector("#gospelCopyNo");
+    if(copy) copy.addEventListener("click", async ()=>{
+      const txt = gospelMembers().filter(m=> !g.applied[m.id]).map(m=>m.name).join(", ");
+      try{ await navigator.clipboard.writeText(txt); copy.textContent = "복사됨"; }catch(e){ copy.textContent = "복사 실패"; }
+    });
   }
 
   function renderFinance(){
