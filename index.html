@@ -1448,9 +1448,10 @@
   };
   // 조장 전용 화면: URL에 ?leader=1 을 붙여서 들어온 경우에만 명단·분류·조 편성이 보인다.
   // 일반 조원에게 나눠주는 기본 링크에는 이 탭들이 아예 나타나지 않는다.
-  const LEADER_ONLY_VIEWS = ["roster", "classify", "board", "notes", "finance", "gospel"];
+  const LEADER_ONLY_VIEWS = ["roster", "classify", "board", "notes", "finance"];
   const isLeaderMode = new URLSearchParams(location.search).get("leader") === "1";
   let currentView = isLeaderMode ? "classify" : "schedule";
+  if(!isLeaderMode){ VIEW_TITLES.gospel = "복음집회"; VIEW_SUBS.gospel = "11/14 청년부 복음집회에 초대합니다"; }
 
   // 모바일(사이드바가 하단탭으로 바뀌는 폭)에서는 조 편성 수정을 막는다.
   function isMobile(){ return !window.matchMedia || window.matchMedia("(max-width:899px)").matches; }
@@ -3878,6 +3879,7 @@
   // ================= 복음집회 영상 준비 =================
   const GOSPEL_EVENT = "2026-11-14";
   const GOSPEL_DEADLINE = "2026-11-08";
+  const GOSPEL_FORM_URL = "https://forms.gle/vfpnbnwLc2AsHwpt6";
   const GOSPEL_VIDEOS = [
     { id:"v1", title:"영상1 초대 티저", len:"30~60초", up:"2026-10-18" },
     { id:"v2", title:"영상2 성도 간증", len:"1~2분",  up:"2026-10-25" },
@@ -3918,7 +3920,7 @@
     GOSPEL_ROLES.forEach(([k])=> roles[k] = (g.roles && typeof g.roles[k] === "string") ? g.roles[k] : "");
     return {
       goal: typeof g.goal === "string" ? g.goal : "",
-      formUrl: typeof g.formUrl === "string" ? g.formUrl : "",
+      formUrl: typeof g.formUrl === "string" && g.formUrl ? g.formUrl : GOSPEL_FORM_URL,
       tasks, roles,
       applied: (g.applied && typeof g.applied === "object") ? g.applied : {}
     };
@@ -3944,10 +3946,37 @@
     if(!state.gospel) state.gospel = normalizeGospel(null);
     document.querySelectorAll("#gospelSubTabs button").forEach(b=> b.classList.toggle("active", b.dataset.sub === gospelSub));
     const wrap = document.getElementById("gospelBody");
+    // 일반 조원에게는 제작·신청 관리 화면 대신 집회 안내와 신청 버튼만 보여준다.
+    document.getElementById("gospelSubTabs").style.display = isLeaderMode ? "" : "none";
+    if(!isLeaderMode){ wrap.innerHTML = gospelMemberHtml(); return; }
     if(gospelSub === "dash") wrap.innerHTML = gospelDashHtml();
     else if(gospelSub === "prod") wrap.innerHTML = gospelProdHtml();
     else wrap.innerHTML = gospelApplyHtml();
     bindGospel(wrap);
+  }
+
+
+  function gospelMemberHtml(){
+    const dd = n => n > 0 ? "D-" + n : n === 0 ? "D-DAY" : "D+" + (-n);
+    const url = state.gospel.formUrl || GOSPEL_FORM_URL;
+    const open = gospelDday(GOSPEL_DEADLINE) >= 0;
+    const row = (t, d)=> `<div style="display:flex;gap:10px;margin:6px 0;"><div style="width:52px;font-weight:800;color:var(--primary);font-variant-numeric:tabular-nums;">${t}</div><div>${d}</div></div>`;
+    return `
+      <div class="fin-stats">
+        <div class="fin-stat"><div class="s-k">집회까지</div><div class="s-v">${dd(gospelDday(GOSPEL_EVENT))}</div></div>
+        <div class="fin-stat"><div class="s-k">신청 마감 (11/8)</div><div class="s-v">${open ? dd(gospelDday(GOSPEL_DEADLINE)) : "마감"}</div></div>
+      </div>
+      <div class="section-title">26년 청년부 복음집회</div>
+      <div class="section-sub" style="color:var(--ink);font-weight:700;">11/14(토) 15:30 시작</div>
+      <div class="section-sub">주제 · 의롭다 하신 이는 하나님이시니 (롬 8:33)<br>강사 · 임승훈 형제 (속초교회)</div>
+      <div style="background:var(--paper);border-radius:14px;box-shadow:var(--shadow-card);padding:14px 16px;font-size:14px;line-height:1.5;margin-bottom:16px;">
+        ${row("15:30","찬양 / 특송")}${row("16:00","1강 · 죄와 심판")}${row("17:00","2강 · 십자가와 부활")}
+        ${row("18:00","저녁식사")}${row("19:00","3강 · 오직 은혜, 오직 믿음으로 받는 구원")}${row("20:00","개인상담")}
+      </div>
+      ${open
+        ? `<a class="btn block" href="${esc(url)}" target="_blank" rel="noopener" style="display:block;text-align:center;text-decoration:none;box-sizing:border-box;">📝 집회 신청하기 (11/8까지)</a>`
+        : `<div class="section-sub" style="text-align:center;">신청이 마감되었어요.</div>`}
+    `;
   }
 
   function gospelDashHtml(){
